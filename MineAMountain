@@ -1,4 +1,4 @@
--- Unified Game Control Panel v8.7 - Added Boulder Control Buttons
+-- Unified Game Control Panel v9.0 - Name-Only X-Ray, 5 Boulder TPs, Crystal Cap
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
@@ -16,9 +16,6 @@ player.CharacterAdded:Connect(function(char)
 	humanoidRootPart = char:WaitForChild("HumanoidRootPart")
 end)
 
--- ============================================================
--- GLOBAL SYSTEM STATE
--- ============================================================
 local scriptActive = true
 local allConnections = {}
 
@@ -72,11 +69,7 @@ indicatorFrame.BackgroundColor3 = COLORS.Background
 indicatorFrame.BorderSizePixel = 0
 indicatorFrame.Parent = indicatorGui
 Instance.new("UICorner", indicatorFrame).CornerRadius = UDim.new(1, 0)
-
-local indicatorStroke = Instance.new("UIStroke")
-indicatorStroke.Color = COLORS.Border
-indicatorStroke.Thickness = 1
-indicatorStroke.Parent = indicatorFrame
+Instance.new("UIStroke", indicatorFrame).Color = COLORS.Border
 
 local indicatorDot = Instance.new("Frame")
 indicatorDot.Size = UDim2.new(0, 12, 0, 12)
@@ -196,9 +189,7 @@ end
 
 task.spawn(function()
     while scriptActive do
-        if hazardNukeActive then
-            nukeHazards()
-        end
+        if hazardNukeActive then nukeHazards() end
         task.wait(0.5)
     end
 end)
@@ -223,18 +214,14 @@ local function cleanMapCrystals()
 end
 
 -- ============================================================
--- NEW: BOULDER CONTROL FUNCTIONS (From your breakthrough)
+-- BOULDER CONTROL FUNCTIONS
 -- ============================================================
 local boulderTargetPos = Vector3.new(33, 43, 922)
 
 local function moveUnanchoredBoulders()
     local bouldersRoot = Workspace:FindFirstChild("MountainDecorations")
     if bouldersRoot then bouldersRoot = bouldersRoot:FindFirstChild("Boulders") end
-    if not bouldersRoot then 
-        statusLabel.Text = "Status: Boulders folder not found"
-        statusLabel.TextColor3 = COLORS.Warning
-        return 0
-    end
+    if not bouldersRoot then return 0 end
     
     local count = 0
     for _, desc in pairs(bouldersRoot:GetDescendants()) do
@@ -246,50 +233,35 @@ local function moveUnanchoredBoulders()
     return count
 end
 
-local function tpToAnchoredAndBomb()
-    local char = player.Character
-    local rootPart = char and char:FindFirstChild("HumanoidRootPart")
-    
+local function getAnchoredBoulders()
     local bouldersRoot = Workspace:FindFirstChild("MountainDecorations")
     if bouldersRoot then bouldersRoot = bouldersRoot:FindFirstChild("Boulders") end
-    if not bouldersRoot or not rootPart then 
-        statusLabel.Text = "Status: Cannot teleport"
-        statusLabel.TextColor3 = COLORS.Warning
-        return false
-    end
+    if not bouldersRoot then return {} end
     
-    local anchoredBoulders = {}
+    local anchored = {}
     for _, desc in pairs(bouldersRoot:GetDescendants()) do
         if desc:IsA("BasePart") and desc.Anchored then
-            table.insert(anchoredBoulders, desc)
+            table.insert(anchored, desc)
         end
     end
+    return anchored
+end
+
+local function tpToBoulder(boulderPart)
+    local char = player.Character
+    local rootPart = char and char:FindFirstChild("HumanoidRootPart")
+    if not rootPart or not boulderPart then return false end
     
-    if #anchoredBoulders > 0 then
-        local closest = nil
-        local minDist = math.huge
-        for _, b in pairs(anchoredBoulders) do
-            local dist = (rootPart.Position - b.Position).Magnitude
-            if dist < minDist then
-                minDist = dist
-                closest = b
-            end
+    rootPart.CFrame = boulderPart.CFrame * CFrame.new(0, 5, 0)
+    
+    local backpack = player:FindFirstChild("Backpack")
+    if backpack then
+        local bomb = backpack:FindFirstChild("Classic Bomb")
+        if bomb and bomb:IsA("Tool") then
+            bomb.Parent = char
         end
-        
-        rootPart.CFrame = closest.CFrame * CFrame.new(0, 5, 0)
-        
-        -- Equip Classic Bomb immediately after TP
-        local backpack = player:FindFirstChild("Backpack")
-        if backpack then
-            local bomb = backpack:FindFirstChild("Classic Bomb")
-            if bomb and bomb:IsA("Tool") then
-                bomb.Parent = char
-            end
-        end
-        return true
-    else
-        return false
     end
+    return true
 end
 
 -- ============================================================
@@ -303,18 +275,15 @@ screenGui.Parent = playerGui
 
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 380, 0, 580)
-mainFrame.Position = UDim2.new(1, -400, 0.5, -290)
+mainFrame.Size = UDim2.new(0, 380, 0, 600)
+mainFrame.Position = UDim2.new(1, -400, 0.5, -300)
 mainFrame.BackgroundColor3 = COLORS.Background
 mainFrame.BorderSizePixel = 0
 mainFrame.Visible = true
 mainFrame.Parent = screenGui
 
 Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 16)
-local mainStroke = Instance.new("UIStroke")
-mainStroke.Color = COLORS.Border
-mainStroke.Thickness = 2
-mainStroke.Parent = mainFrame
+Instance.new("UIStroke", mainFrame).Color = COLORS.Border
 
 local header = Instance.new("Frame")
 header.Size = UDim2.new(1, 0, 0, 60)
@@ -374,7 +343,6 @@ Instance.new("UIPadding", scrollFrame).PaddingTop = UDim.new(0, 5)
 local toggles = {}
 local removedCrystals = 0
 local keptHeavyCrystals = 0
-local boulderHighlights = {}
 local boulderLabels = {}
 local runeHighlights = {}
 local runeLabels = {}
@@ -528,7 +496,7 @@ local function createWeightInput(name, label, defaultValue, order)
 	inputBox.Parent = card
 	Instance.new("UICorner", inputBox).CornerRadius = UDim.new(0, 6)
 
-	inputBox.FocusLost:Connect(function(enterPressed)
+	inputBox.FocusLost:Connect(function()
 		local value = tonumber(inputBox.Text)
 		if value and value >= 0 then
 			weightThresholds[name] = value
@@ -545,13 +513,13 @@ end
 -- ============================================================
 createSectionHeader("VISUAL FEATURES", 1)
 local xrayToggle = createToggle("Crystal X-Ray (T4/T5/T6)", true, 2)
-local boulderXrayToggle = createToggle("Boulder X-Ray (5000 Studs)", false, 3)
+local boulderXrayToggle = createToggle("Boulder Names (5000 Studs)", false, 3)
 
 createSectionHeader("HAZARD AND CLEANUP", 4)
 local hazardToggle = createToggle("Hazard Remover (Lava/Rocks/Avalanche)", true, 5)
 local cleanBtn = createActionButton("Clear All Map Crystals", Color3.fromRGB(200, 100, 0), 6, function()
     local count = cleanMapCrystals()
-    statusLabel.Text = ("Status: Wiped %d map crystals!"):format(count)
+    statusLabel.Text = ("Status: Wiped %d map crystals"):format(count)
     statusLabel.TextColor3 = COLORS.Success
 end)
 
@@ -563,33 +531,50 @@ createWeightInput("Epic", "Epic (T4)", 1000, 11)
 createWeightInput("Legendary", "Legendary (T5)", 1000, 12)
 createWeightInput("Mythic", "Mythic (T6)", 0, 13)
 
-createSectionHeader("AUTOMATION", 14)
-local autoDigToggle = createToggle("Auto Dig (Middle Mouse)", false, 15)
+createSectionHeader("CRYSTAL MANAGEMENT", 14)
+local crystalCapToggle = createToggle("Crystal Cap (200 Max)", false, 15)
 
--- NEW: BOULDER CONTROL SECTION
-createSectionHeader("BOULDER CONTROL", 16)
-local moveBouldersBtn = createActionButton("Move Unanchored to Target", Color3.fromRGB(70, 120, 180), 17, function()
+createSectionHeader("AUTOMATION", 16)
+local autoDigToggle = createToggle("Auto Dig (Middle Mouse)", false, 17)
+
+createSectionHeader("BOULDER CONTROL", 18)
+local moveBouldersBtn = createActionButton("Move Unanchored to Target", Color3.fromRGB(70, 120, 180), 19, function()
     local count = moveUnanchoredBoulders()
     statusLabel.Text = ("Status: Moved %d unanchored boulders"):format(count)
     statusLabel.TextColor3 = COLORS.Success
 end)
 
-local tpAnchoredBtn = createActionButton("TP to Anchored + Bomb", Color3.fromRGB(70, 120, 180), 18, function()
-    local success = tpToAnchoredAndBomb()
-    if success then
-        statusLabel.Text = "Status: Teleported + Bomb equipped"
-        statusLabel.TextColor3 = COLORS.Success
-    else
-        statusLabel.Text = "Status: No anchored boulders found"
-        statusLabel.TextColor3 = COLORS.Warning
-    end
-end)
+-- 5 Boulder TP Buttons (populated dynamically)
+local tpButtonRefs = {}
+local boulderColors = {
+    Color3.fromRGB(60, 130, 60),
+    Color3.fromRGB(60, 100, 150),
+    Color3.fromRGB(130, 100, 50),
+    Color3.fromRGB(100, 60, 130),
+    Color3.fromRGB(130, 60, 60)
+}
 
+for i = 1, 5 do
+    local btn = createActionButton("TP to Boulder " .. i .. " + Bomb", boulderColors[i], 19 + i, function()
+        local anchored = getAnchoredBoulders()
+        if i <= #anchored then
+            tpToBoulder(anchored[i])
+            statusLabel.Text = ("Status: Teleported to Boulder %d"):format(i)
+            statusLabel.TextColor3 = COLORS.Success
+        else
+            statusLabel.Text = ("Status: Boulder %d not found"):format(i)
+            statusLabel.TextColor3 = COLORS.Warning
+        end
+    end)
+    table.insert(tpButtonRefs, btn)
+end
+
+-- Status display
 local statusCard = Instance.new("Frame")
 statusCard.Size = UDim2.new(1, 0, 0, 60)
 statusCard.BackgroundColor3 = COLORS.Card
 statusCard.BorderSizePixel = 0
-statusCard.LayoutOrder = 19
+statusCard.LayoutOrder = 26
 statusCard.Parent = scrollFrame
 Instance.new("UICorner", statusCard).CornerRadius = UDim.new(0, 10)
 
@@ -615,13 +600,13 @@ countLabel.Font = Enum.Font.Gotham
 countLabel.TextXAlignment = Enum.TextXAlignment.Left
 countLabel.Parent = statusCard
 
-createSectionHeader("DIGGING TOOLS", 20)
-local digToggle = createToggle("Fast Dig (Eclipse Fang)", false, 21)
+createSectionHeader("DIGGING TOOLS", 27)
+local digToggle = createToggle("Fast Dig (Eclipse Fang)", false, 28)
 
 -- ============================================================
 -- KILLSWITCH (COMPLETE SYSTEM RESET)
 -- ============================================================
-local closeButton = createActionButton("KILLSWITCH (Complete Reset)", Color3.fromRGB(180, 60, 60), 22, function()
+local closeButton = createActionButton("KILLSWITCH (Complete Reset)", Color3.fromRGB(180, 60, 60), 29, function()
     scriptActive = false
     hazardNukeActive = false
     
@@ -629,9 +614,6 @@ local closeButton = createActionButton("KILLSWITCH (Complete Reset)", Color3.fro
         pcall(function() conn:Disconnect() end)
     end
     allConnections = {}
-    
-    for _, hl in pairs(boulderHighlights) do pcall(function() hl:Destroy() end) end
-    boulderHighlights = {}
     
     for _, label in pairs(boulderLabels) do pcall(function() label:Destroy() end) end
     boulderLabels = {}
@@ -655,11 +637,11 @@ local closeButton = createActionButton("KILLSWITCH (Complete Reset)", Color3.fro
     pcall(function() screenGui:Destroy() end)
     pcall(function() indicatorGui:Destroy() end)
     
-    print("[GameControl] COMPLETE SYSTEM RESET - All loops stopped, all highlights cleared, GUI destroyed")
+    print("[GameControl] COMPLETE SYSTEM RESET")
 end)
 
 -- ============================================================
--- VISUAL ENGINES
+-- VISUAL ENGINES (Name-Only X-Ray for Boulders)
 -- ============================================================
 local function updateVisuals()
     if not scriptActive then return end
@@ -735,21 +717,14 @@ local function formatBoulderName(name)
 	return name:gsub("Boulder_", ""):gsub("_", " ")
 end
 
-local function applyBoulderVisuals(boulder)
-    if boulderHighlights[boulder] then return end
+-- NAME-ONLY boulder visuals (no Highlight, just BillboardGui)
+local function applyBoulderName(boulder)
+    if boulderLabels[boulder] then return end
     if not boulder:IsA("Model") and not boulder:IsA("BasePart") then return end
     
-    local hl = Instance.new("Highlight")
-    hl.Parent = boulder
-    hl.FillColor = getBoulderColor(boulder)
-    hl.OutlineTransparency = 1 
-    hl.FillTransparency = 0.15 
-    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop 
-    boulderHighlights[boulder] = hl
-
     local gui = Instance.new("BillboardGui")
     gui.Name = "BoulderNameGui"
-    gui.Size = UDim2.new(0, 100, 0, 40)
+    gui.Size = UDim2.new(0, 120, 0, 40)
     gui.StudsOffset = Vector3.new(0, 3, 0)
     gui.AlwaysOnTop = true
     gui.MaxDistance = 5000
@@ -767,7 +742,7 @@ local function applyBoulderVisuals(boulder)
     textLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
     textLabel.Parent = gui
 
-    boulderLabels[boulder] = textLabel
+    boulderLabels[boulder] = gui
 end
 
 local function updateBoulderXray(state)
@@ -775,35 +750,36 @@ local function updateBoulderXray(state)
     
     local bouldersRoot = getBoulderFolder()
     if not bouldersRoot then 
-        statusLabel.Text = "Status: Boulders folder not found"; statusLabel.TextColor3 = COLORS.Warning; return 
+        statusLabel.Text = "Status: Boulders folder not found"
+        statusLabel.TextColor3 = COLORS.Warning
+        return 
     end
     
-    for _, hl in pairs(boulderHighlights) do pcall(function() hl:Destroy() end) end
-    boulderHighlights = {}
     for _, label in pairs(boulderLabels) do pcall(function() label:Destroy() end) end
     boulderLabels = {}
 
     if state then
         local count = 0
         for _, boulder in ipairs(bouldersRoot:GetChildren()) do
-            applyBoulderVisuals(boulder)
+            applyBoulderName(boulder)
             count += 1
         end
-        statusLabel.Text = ("Status: Boulder X-Ray enabled (%d found)"):format(count)
+        statusLabel.Text = ("Status: Boulder Names enabled (%d found)"):format(count)
         statusLabel.TextColor3 = COLORS.Success
         
         if not bouldersRoot:GetAttribute("XrayHooked") then
             bouldersRoot:SetAttribute("XrayHooked", true)
             local conn = bouldersRoot.ChildAdded:Connect(function(child)
                 if not scriptActive then return end
-                if toggles["Boulder X-Ray (5000 Studs)"].state then
-                    applyBoulderVisuals(child)
+                if toggles["Boulder Names (5000 Studs)"].state then
+                    applyBoulderName(child)
                 end
             end)
             table.insert(allConnections, conn)
         end
     else
-        statusLabel.Text = "Status: Boulder X-Ray disabled"; statusLabel.TextColor3 = COLORS.TextDim
+        statusLabel.Text = "Status: Boulder Names disabled"
+        statusLabel.TextColor3 = COLORS.TextDim
     end
 end
 
@@ -904,7 +880,7 @@ task.spawn(function()
     end
 end)
 
--- CLEANER
+-- CLEANER + CRYSTAL CAP
 local function getTierAndMinWeight(name)
 	local tier = tonumber(name:match("T(%d+)"))
 	if not tier then return 0, 0 end
@@ -934,6 +910,43 @@ local function runCleaner()
 	countLabel.Text = "Removed: " .. removedCrystals .. " | Kept: " .. keptHeavyCrystals
 end
 
+-- CRYSTAL CAP (Only Things/Crystals, not DroppedCrystals)
+local CRYSTAL_CAP = 200
+
+local function runCrystalCap()
+    if not scriptActive then return end
+    if not (toggles["Crystal Cap (200 Max)"] and toggles["Crystal Cap (200 Max)"].state) then return end
+    
+    local crystalsFolder = Workspace:FindFirstChild("Things") and Workspace.Things:FindFirstChild("Crystals")
+    if not crystalsFolder then return end
+    
+    -- Collect all crystals with their tier and weight
+    local crystals = {}
+    for _, crystal in ipairs(crystalsFolder:GetChildren()) do
+        if crystal:IsA("BasePart") and crystal.Name:find("Crystal_T") then
+            local tier = tonumber(crystal.Name:match("T(%d+)")) or 0
+            local weight = crystal:GetAttribute("WeightKg") or 0
+            table.insert(crystals, { part = crystal, tier = tier, weight = weight })
+        end
+    end
+    
+    -- If over cap, sort by value (tier then weight) and delete the worst ones
+    if #crystals > CRYSTAL_CAP then
+        table.sort(crystals, function(a, b)
+            if a.tier ~= b.tier then return a.tier < b.tier end
+            return a.weight < b.weight
+        end)
+        
+        local toDelete = #crystals - CRYSTAL_CAP
+        for i = 1, toDelete do
+            if crystals[i] and crystals[i].part and crystals[i].part.Parent then
+                crystals[i].part:Destroy()
+                removedCrystals += 1
+            end
+        end
+    end
+end
+
 local function applyToolBuffs(enable)
 	local tool = player.Backpack:FindFirstChild(toolName) or (player.Character and player.Character:FindFirstChild(toolName))
 	if tool then 
@@ -957,7 +970,6 @@ end}
 autoDigToggle.callbacks = {function(state)
     statusLabel.Text = state and "Status: Rapid Fire Dig enabled" or "Status: Rapid Fire Dig disabled"
     statusLabel.TextColor3 = state and COLORS.Success or COLORS.TextDim
-    
     updateAutoDigIndicator(state)
 end}
 
@@ -969,6 +981,11 @@ hazardToggle.callbacks = {function(state)
     else 
         statusLabel.Text = "Status: Hazard Remover disabled"
     end
+    statusLabel.TextColor3 = state and COLORS.Success or COLORS.TextDim
+end}
+
+crystalCapToggle.callbacks = {function(state)
+    statusLabel.Text = state and "Status: Crystal Cap enabled (200 max)" or "Status: Crystal Cap disabled"
     statusLabel.TextColor3 = state and COLORS.Success or COLORS.TextDim
 end}
 
@@ -1024,8 +1041,9 @@ RunService.Heartbeat:Connect(function(dt)
         lastHeavyScan = 0
         
         runCleaner()
+        runCrystalCap()
         updateVisuals()
     end
 end)
 
-print("Unified Game Control Panel v8.7 loaded!")
+print("Unified Game Control Panel v9.0 loaded!")
