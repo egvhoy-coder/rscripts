@@ -1,0 +1,1031 @@
+-- Unified Game Control Panel v8.7 - Added Boulder Control Buttons
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local player = Players.LocalPlayer
+local playerGui = player:FindFirstChild("PlayerGui") or player:WaitForChild("PlayerGui", 10)
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+
+player.CharacterAdded:Connect(function(char)
+	character = char
+	humanoidRootPart = char:WaitForChild("HumanoidRootPart")
+end)
+
+-- ============================================================
+-- GLOBAL SYSTEM STATE
+-- ============================================================
+local scriptActive = true
+local allConnections = {}
+
+local COLORS = {
+	Background = Color3.fromRGB(15, 15, 20),
+	Panel = Color3.fromRGB(25, 25, 35),
+	Card = Color3.fromRGB(35, 35, 45),
+	Accent = Color3.fromRGB(100, 150, 255),
+	Success = Color3.fromRGB(80, 200, 120),
+	Danger = Color3.fromRGB(220, 80, 80),
+	Warning = Color3.fromRGB(255, 180, 50),
+	Text = Color3.fromRGB(240, 240, 245),
+	TextDim = Color3.fromRGB(180, 180, 190),
+	Border = Color3.fromRGB(60, 60, 75)
+}
+
+local weightThresholds = {
+	Common = 1000,
+	Uncommon = 1000,
+	Rare = 1000,
+	Epic = 1000,
+	Legendary = 1000,
+	Mythic = 0
+}
+
+local DigRequest = nil
+pcall(function()
+    local remotes = ReplicatedStorage:WaitForChild("Remotes", 5)
+    if remotes then
+        DigRequest = remotes:WaitForChild("DigRequest", 5)
+    end
+end)
+local toolName = "Eclipse Fang"
+
+-- ============================================================
+-- FLOATING AUTO DIG INDICATOR
+-- ============================================================
+local indicatorGui = Instance.new("ScreenGui")
+indicatorGui.Name = "AutoDigIndicator"
+indicatorGui.ResetOnSpawn = false
+indicatorGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+indicatorGui.DisplayOrder = 100
+indicatorGui.Parent = playerGui
+
+local indicatorFrame = Instance.new("Frame")
+indicatorFrame.Name = "Indicator"
+indicatorFrame.Size = UDim2.new(0, 140, 0, 32)
+indicatorFrame.Position = UDim2.new(0.5, 0, 1, -200)
+indicatorFrame.AnchorPoint = Vector2.new(0.5, 0)
+indicatorFrame.BackgroundColor3 = COLORS.Background
+indicatorFrame.BorderSizePixel = 0
+indicatorFrame.Parent = indicatorGui
+Instance.new("UICorner", indicatorFrame).CornerRadius = UDim.new(1, 0)
+
+local indicatorStroke = Instance.new("UIStroke")
+indicatorStroke.Color = COLORS.Border
+indicatorStroke.Thickness = 1
+indicatorStroke.Parent = indicatorFrame
+
+local indicatorDot = Instance.new("Frame")
+indicatorDot.Size = UDim2.new(0, 12, 0, 12)
+indicatorDot.Position = UDim2.new(0, 12, 0.5, -6)
+indicatorDot.BackgroundColor3 = COLORS.Danger
+indicatorDot.BorderSizePixel = 0
+indicatorDot.Parent = indicatorFrame
+Instance.new("UICorner", indicatorDot).CornerRadius = UDim.new(1, 0)
+
+local indicatorText = Instance.new("TextLabel")
+indicatorText.Size = UDim2.new(1, -35, 1, 0)
+indicatorText.Position = UDim2.new(0, 32, 0, 0)
+indicatorText.BackgroundTransparency = 1
+indicatorText.Text = "Auto Dig: OFF"
+indicatorText.TextColor3 = COLORS.TextDim
+indicatorText.TextSize = 13
+indicatorText.Font = Enum.Font.GothamBold
+indicatorText.TextXAlignment = Enum.TextXAlignment.Left
+indicatorText.Parent = indicatorFrame
+
+local function updateAutoDigIndicator(state)
+    if state then
+        indicatorDot.BackgroundColor3 = COLORS.Success
+        indicatorText.Text = "Auto Dig: ON"
+        indicatorText.TextColor3 = COLORS.Success
+    else
+        indicatorDot.BackgroundColor3 = COLORS.Danger
+        indicatorText.Text = "Auto Dig: OFF"
+        indicatorText.TextColor3 = COLORS.TextDim
+    end
+end
+
+-- ============================================================
+-- DE-GLOW
+-- ============================================================
+local function deGlow(crystal)
+    if crystal:IsA("BasePart") and (crystal.Name:find("Crystal_T") or crystal.Name:find("DroppedCrystal_T")) then
+        crystal.Material = Enum.Material.SmoothPlastic
+        for _, child in pairs(crystal:GetChildren()) do
+            if child:IsA("PointLight") or child:IsA("ParticleEmitter") or child:IsA("SurfaceLight") or child:IsA("SpotLight") then
+                child:Destroy()
+            end
+        end
+    end
+end
+
+local function setupCrystalWatcher()
+    local things = Workspace:FindFirstChild("Things")
+    local crystalsFolder = things and things:FindFirstChild("Crystals")
+    local droppedFolder = Workspace:FindFirstChild("DroppedCrystals")
+
+    if crystalsFolder then
+        for _, v in pairs(crystalsFolder:GetDescendants()) do deGlow(v) end
+        local conn = crystalsFolder.ChildAdded:Connect(function(child)
+            if not scriptActive then return end
+            task.wait() 
+            deGlow(child)
+            for _, desc in pairs(child:GetDescendants()) do deGlow(desc) end
+        end)
+        table.insert(allConnections, conn)
+    end
+
+    if droppedFolder then
+        for _, v in pairs(droppedFolder:GetDescendants()) do deGlow(v) end
+        local conn = droppedFolder.ChildAdded:Connect(function(child)
+            if not scriptActive then return end
+            task.wait() 
+            deGlow(child)
+            for _, desc in pairs(child:GetDescendants()) do deGlow(desc) end
+        end)
+        table.insert(allConnections, conn)
+    end
+end
+
+setupCrystalWatcher()
+
+-- ============================================================
+-- HAZARD REMOVER (Ghost Rocks)
+-- ============================================================
+local hazardNukeActive = true
+
+local function nukeHazards()
+    if not scriptActive then return end
+    
+    local md = Workspace:FindFirstChild("MountainDecorations")
+    local avalanche = Workspace:FindFirstChild("Avalanche")
+    local things = Workspace:FindFirstChild("Things")
+    local lavaFolder = things and things:FindFirstChild("Lava")
+    
+    if lavaFolder then
+        pcall(function() lavaFolder:Destroy() end)
+    end
+    
+    for _, v in pairs(Workspace:GetDescendants()) do
+        if v:IsA("BasePart") then
+            local n = v.Name:lower()
+            local isLava = (n == "lava" or n:find("lava"))
+            local isRock = (v.Name == "Rock" and md and v:IsDescendantOf(md))
+            local isAvalanche = (v.Name == "AvalanchePart" and avalanche and v:IsDescendantOf(avalanche))
+            
+            if isLava then
+                pcall(function() v:Destroy() end)
+            elseif isRock or isAvalanche then
+                pcall(function()
+                    v.CanCollide = false
+                    v.CanTouch = false
+                    v.CanQuery = false
+                    v.Transparency = 0.7
+                    v.Anchored = true
+                    v.Velocity = Vector3.new(0, 0, 0)
+                    v.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                end)
+            end
+        end
+    end
+end
+
+task.spawn(function()
+    while scriptActive do
+        if hazardNukeActive then
+            nukeHazards()
+        end
+        task.wait(0.5)
+    end
+end)
+
+nukeHazards()
+
+-- ============================================================
+-- MAP CRYSTAL WIPE
+-- ============================================================
+local function cleanMapCrystals()
+    local count = 0
+    local crystalsFolder = Workspace:FindFirstChild("Things") and Workspace.Things:FindFirstChild("Crystals")
+    if crystalsFolder then
+        for _, v in pairs(crystalsFolder:GetDescendants()) do
+            if v:IsA("BasePart") and v.Name:find("Crystal_T") then
+                v:Destroy()
+                count = count + 1
+            end
+        end
+    end
+    return count
+end
+
+-- ============================================================
+-- NEW: BOULDER CONTROL FUNCTIONS (From your breakthrough)
+-- ============================================================
+local boulderTargetPos = Vector3.new(33, 43, 922)
+
+local function moveUnanchoredBoulders()
+    local bouldersRoot = Workspace:FindFirstChild("MountainDecorations")
+    if bouldersRoot then bouldersRoot = bouldersRoot:FindFirstChild("Boulders") end
+    if not bouldersRoot then 
+        statusLabel.Text = "Status: Boulders folder not found"
+        statusLabel.TextColor3 = COLORS.Warning
+        return 0
+    end
+    
+    local count = 0
+    for _, desc in pairs(bouldersRoot:GetDescendants()) do
+        if desc:IsA("BasePart") and not desc.Anchored then
+            desc.CFrame = CFrame.new(boulderTargetPos)
+            count = count + 1
+        end
+    end
+    return count
+end
+
+local function tpToAnchoredAndBomb()
+    local char = player.Character
+    local rootPart = char and char:FindFirstChild("HumanoidRootPart")
+    
+    local bouldersRoot = Workspace:FindFirstChild("MountainDecorations")
+    if bouldersRoot then bouldersRoot = bouldersRoot:FindFirstChild("Boulders") end
+    if not bouldersRoot or not rootPart then 
+        statusLabel.Text = "Status: Cannot teleport"
+        statusLabel.TextColor3 = COLORS.Warning
+        return false
+    end
+    
+    local anchoredBoulders = {}
+    for _, desc in pairs(bouldersRoot:GetDescendants()) do
+        if desc:IsA("BasePart") and desc.Anchored then
+            table.insert(anchoredBoulders, desc)
+        end
+    end
+    
+    if #anchoredBoulders > 0 then
+        local closest = nil
+        local minDist = math.huge
+        for _, b in pairs(anchoredBoulders) do
+            local dist = (rootPart.Position - b.Position).Magnitude
+            if dist < minDist then
+                minDist = dist
+                closest = b
+            end
+        end
+        
+        rootPart.CFrame = closest.CFrame * CFrame.new(0, 5, 0)
+        
+        -- Equip Classic Bomb immediately after TP
+        local backpack = player:FindFirstChild("Backpack")
+        if backpack then
+            local bomb = backpack:FindFirstChild("Classic Bomb")
+            if bomb and bomb:IsA("Tool") then
+                bomb.Parent = char
+            end
+        end
+        return true
+    else
+        return false
+    end
+end
+
+-- ============================================================
+-- MAIN GUI
+-- ============================================================
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "UnifiedGameControl"
+screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.Parent = playerGui
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 380, 0, 580)
+mainFrame.Position = UDim2.new(1, -400, 0.5, -290)
+mainFrame.BackgroundColor3 = COLORS.Background
+mainFrame.BorderSizePixel = 0
+mainFrame.Visible = true
+mainFrame.Parent = screenGui
+
+Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 16)
+local mainStroke = Instance.new("UIStroke")
+mainStroke.Color = COLORS.Border
+mainStroke.Thickness = 2
+mainStroke.Parent = mainFrame
+
+local header = Instance.new("Frame")
+header.Size = UDim2.new(1, 0, 0, 60)
+header.BackgroundColor3 = COLORS.Panel
+header.BorderSizePixel = 0
+header.Parent = mainFrame
+Instance.new("UICorner", header).CornerRadius = UDim.new(0, 16)
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(0.6, 0, 0, 30)
+title.Position = UDim2.new(0, 10, 0, 8)
+title.BackgroundTransparency = 1
+title.Text = "Game Control Panel"
+title.TextColor3 = COLORS.Text
+title.TextScaled = true
+title.Font = Enum.Font.GothamBold
+title.Parent = header
+
+local fpsLabel = Instance.new("TextLabel")
+fpsLabel.Size = UDim2.new(0.35, 0, 0, 20)
+fpsLabel.Position = UDim2.new(0.65, -10, 0, 8)
+fpsLabel.BackgroundTransparency = 1
+fpsLabel.Text = "FPS: -- | Ping: --"
+fpsLabel.TextColor3 = COLORS.Accent
+fpsLabel.TextScaled = true
+fpsLabel.Font = Enum.Font.GothamBold
+fpsLabel.TextXAlignment = Enum.TextXAlignment.Right
+fpsLabel.Parent = header
+
+local subtitle = Instance.new("TextLabel")
+subtitle.Size = UDim2.new(1, -20, 0, 20)
+subtitle.Position = UDim2.new(0, 10, 0, 35)
+subtitle.BackgroundTransparency = 1
+subtitle.Text = "Tier-Based Crystal and Rune Management"
+subtitle.TextColor3 = COLORS.TextDim
+subtitle.TextScaled = true
+subtitle.Font = Enum.Font.Gotham
+subtitle.Parent = header
+
+local scrollFrame = Instance.new("ScrollingFrame")
+scrollFrame.Size = UDim2.new(1, -20, 1, -80)
+scrollFrame.Position = UDim2.new(0, 10, 0, 70)
+scrollFrame.BackgroundTransparency = 1
+scrollFrame.BorderSizePixel = 0
+scrollFrame.ScrollBarThickness = 6
+scrollFrame.ScrollBarImageColor3 = COLORS.Accent
+scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+scrollFrame.Parent = mainFrame
+
+local layout = Instance.new("UIListLayout")
+layout.Padding = UDim.new(0, 8)
+layout.SortOrder = Enum.SortOrder.LayoutOrder
+layout.Parent = scrollFrame
+Instance.new("UIPadding", scrollFrame).PaddingTop = UDim.new(0, 5)
+
+local toggles = {}
+local removedCrystals = 0
+local keptHeavyCrystals = 0
+local boulderHighlights = {}
+local boulderLabels = {}
+local runeHighlights = {}
+local runeLabels = {}
+
+local function getCrystalFolders()
+	local folders = {}
+	local regular = Workspace:FindFirstChild("Things") and Workspace.Things:FindFirstChild("Crystals")
+	if regular then table.insert(folders, regular) end
+	local dropped = Workspace:FindFirstChild("DroppedCrystals")
+	if dropped then table.insert(folders, dropped) end
+	return folders
+end
+
+local function createToggle(name, initialState, order)
+	local card = Instance.new("Frame")
+	card.Size = UDim2.new(1, 0, 0, 50)
+	card.BackgroundColor3 = COLORS.Card
+	card.BorderSizePixel = 0
+	card.LayoutOrder = order
+	card.Parent = scrollFrame
+	Instance.new("UICorner", card).CornerRadius = UDim.new(0, 10)
+
+	local cardStroke = Instance.new("UIStroke")
+	cardStroke.Color = COLORS.Border
+	cardStroke.Thickness = 1
+	cardStroke.Transparency = 0.5
+	cardStroke.Parent = card
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(0.65, 0, 1, 0)
+	label.Position = UDim2.new(0, 15, 0, 0)
+	label.BackgroundTransparency = 1
+	label.Text = name
+	label.TextColor3 = COLORS.Text
+	label.TextSize = 16
+	label.Font = Enum.Font.GothamSemibold
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Parent = card
+
+	local switchBg = Instance.new("Frame")
+	switchBg.Size = UDim2.new(0, 50, 0, 26)
+	switchBg.Position = UDim2.new(1, -65, 0.5, -13)
+	switchBg.BackgroundColor3 = initialState and COLORS.Success or Color3.fromRGB(80, 80, 90)
+	switchBg.BorderSizePixel = 0
+	switchBg.Parent = card
+	Instance.new("UICorner", switchBg).CornerRadius = UDim.new(1, 0)
+
+	local switchKnob = Instance.new("Frame")
+	switchKnob.Size = UDim2.new(0, 22, 0, 22)
+	switchKnob.Position = initialState and UDim2.new(1, -24, 0.5, -11) or UDim2.new(0, 2, 0.5, -11)
+	switchKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	switchKnob.BorderSizePixel = 0
+	switchKnob.Parent = switchBg
+	Instance.new("UICorner", switchKnob).CornerRadius = UDim.new(1, 0)
+
+	local clickButton = Instance.new("TextButton")
+	clickButton.Size = UDim2.new(0, 60, 0, 36)
+	clickButton.Position = UDim2.new(1, -70, 0.5, -18)
+	clickButton.BackgroundTransparency = 1
+	clickButton.Text = ""
+	clickButton.AutoButtonColor = false
+	clickButton.ZIndex = 10
+	clickButton.Parent = card
+
+	toggles[name] = { card = card, switchBg = switchBg, switchKnob = switchKnob, button = clickButton, state = initialState, callbacks = {} }
+
+	clickButton.MouseButton1Click:Connect(function()
+		local newState = not toggles[name].state
+		toggles[name].state = newState
+		local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		if newState then
+			TweenService:Create(switchBg, tweenInfo, {BackgroundColor3 = COLORS.Success}):Play()
+			TweenService:Create(switchKnob, tweenInfo, {Position = UDim2.new(1, -24, 0.5, -11)}):Play()
+		else
+			TweenService:Create(switchBg, tweenInfo, {BackgroundColor3 = Color3.fromRGB(80, 80, 90)}):Play()
+			TweenService:Create(switchKnob, tweenInfo, {Position = UDim2.new(0, 2, 0.5, -11)}):Play()
+		end
+		for _, callback in ipairs(toggles[name].callbacks) do pcall(callback, newState) end
+	end)
+
+	clickButton.MouseEnter:Connect(function() TweenService:Create(cardStroke, TweenInfo.new(0.15), {Transparency = 0, Color = COLORS.Accent}):Play() end)
+	clickButton.MouseLeave:Connect(function() TweenService:Create(cardStroke, TweenInfo.new(0.15), {Transparency = 0.5, Color = COLORS.Border}):Play() end)
+
+	return toggles[name]
+end
+
+local function createSectionHeader(text, order)
+	local header = Instance.new("TextLabel")
+	header.Size = UDim2.new(1, 0, 0, 25)
+	header.BackgroundTransparency = 1
+	header.Text = text
+	header.TextColor3 = COLORS.Accent
+	header.TextSize = 14
+	header.Font = Enum.Font.GothamBold
+	header.TextXAlignment = Enum.TextXAlignment.Left
+	header.LayoutOrder = order
+	header.Parent = scrollFrame
+	return header
+end
+
+local function createActionButton(text, color, order, callback)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(1, 0, 0, 45)
+	btn.BackgroundColor3 = color
+	btn.Text = text
+	btn.TextColor3 = COLORS.Text
+	btn.TextSize = 15
+	btn.Font = Enum.Font.GothamBold
+	btn.BorderSizePixel = 0
+	btn.LayoutOrder = order
+	btn.AutoButtonColor = false
+	btn.Parent = scrollFrame
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 10)
+
+	btn.MouseButton1Click:Connect(callback)
+	btn.MouseEnter:Connect(function() TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = color:lerp(Color3.new(1, 1, 1), 0.2)}):Play() end)
+	btn.MouseLeave:Connect(function() TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = color}):Play() end)
+	return btn
+end
+
+local function createWeightInput(name, label, defaultValue, order)
+	local card = Instance.new("Frame")
+	card.Size = UDim2.new(1, 0, 0, 50)
+	card.BackgroundColor3 = COLORS.Card
+	card.BorderSizePixel = 0
+	card.LayoutOrder = order
+	card.Parent = scrollFrame
+	Instance.new("UICorner", card).CornerRadius = UDim.new(0, 10)
+
+	local labelObj = Instance.new("TextLabel")
+	labelObj.Size = UDim2.new(0.6, 0, 1, 0)
+	labelObj.Position = UDim2.new(0, 15, 0, 0)
+	labelObj.BackgroundTransparency = 1
+	labelObj.Text = label
+	labelObj.TextColor3 = COLORS.Text
+	labelObj.TextSize = 14
+	labelObj.Font = Enum.Font.Gotham
+	labelObj.TextXAlignment = Enum.TextXAlignment.Left
+	labelObj.Parent = card
+
+	local inputBox = Instance.new("TextBox")
+	inputBox.Size = UDim2.new(0, 80, 0, 30)
+	inputBox.Position = UDim2.new(1, -95, 0.5, -15)
+	inputBox.BackgroundColor3 = COLORS.Background
+	inputBox.Text = tostring(defaultValue)
+	inputBox.TextColor3 = COLORS.Text
+	inputBox.TextSize = 14
+	inputBox.Font = Enum.Font.GothamBold
+	inputBox.PlaceholderText = "Weight"
+	inputBox.PlaceholderColor3 = COLORS.TextDim
+	inputBox.Parent = card
+	Instance.new("UICorner", inputBox).CornerRadius = UDim.new(0, 6)
+
+	inputBox.FocusLost:Connect(function(enterPressed)
+		local value = tonumber(inputBox.Text)
+		if value and value >= 0 then
+			weightThresholds[name] = value
+		else
+			inputBox.Text = tostring(weightThresholds[name])
+		end
+	end)
+
+	return card
+end
+
+-- ============================================================
+-- BUILD GUI
+-- ============================================================
+createSectionHeader("VISUAL FEATURES", 1)
+local xrayToggle = createToggle("Crystal X-Ray (T4/T5/T6)", true, 2)
+local boulderXrayToggle = createToggle("Boulder X-Ray (5000 Studs)", false, 3)
+
+createSectionHeader("HAZARD AND CLEANUP", 4)
+local hazardToggle = createToggle("Hazard Remover (Lava/Rocks/Avalanche)", true, 5)
+local cleanBtn = createActionButton("Clear All Map Crystals", Color3.fromRGB(200, 100, 0), 6, function()
+    local count = cleanMapCrystals()
+    statusLabel.Text = ("Status: Wiped %d map crystals!"):format(count)
+    statusLabel.TextColor3 = COLORS.Success
+end)
+
+createSectionHeader("WEIGHT THRESHOLDS", 7)
+createWeightInput("Common", "Common (T1)", 1000, 8)
+createWeightInput("Uncommon", "Uncommon (T2)", 1000, 9)
+createWeightInput("Rare", "Rare (T3)", 1000, 10)
+createWeightInput("Epic", "Epic (T4)", 1000, 11)
+createWeightInput("Legendary", "Legendary (T5)", 1000, 12)
+createWeightInput("Mythic", "Mythic (T6)", 0, 13)
+
+createSectionHeader("AUTOMATION", 14)
+local autoDigToggle = createToggle("Auto Dig (Middle Mouse)", false, 15)
+
+-- NEW: BOULDER CONTROL SECTION
+createSectionHeader("BOULDER CONTROL", 16)
+local moveBouldersBtn = createActionButton("Move Unanchored to Target", Color3.fromRGB(70, 120, 180), 17, function()
+    local count = moveUnanchoredBoulders()
+    statusLabel.Text = ("Status: Moved %d unanchored boulders"):format(count)
+    statusLabel.TextColor3 = COLORS.Success
+end)
+
+local tpAnchoredBtn = createActionButton("TP to Anchored + Bomb", Color3.fromRGB(70, 120, 180), 18, function()
+    local success = tpToAnchoredAndBomb()
+    if success then
+        statusLabel.Text = "Status: Teleported + Bomb equipped"
+        statusLabel.TextColor3 = COLORS.Success
+    else
+        statusLabel.Text = "Status: No anchored boulders found"
+        statusLabel.TextColor3 = COLORS.Warning
+    end
+end)
+
+local statusCard = Instance.new("Frame")
+statusCard.Size = UDim2.new(1, 0, 0, 60)
+statusCard.BackgroundColor3 = COLORS.Card
+statusCard.BorderSizePixel = 0
+statusCard.LayoutOrder = 19
+statusCard.Parent = scrollFrame
+Instance.new("UICorner", statusCard).CornerRadius = UDim.new(0, 10)
+
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Size = UDim2.new(1, -20, 0, 20)
+statusLabel.Position = UDim2.new(0, 10, 0, 8)
+statusLabel.BackgroundTransparency = 1
+statusLabel.Text = "Status: All systems active"
+statusLabel.TextColor3 = COLORS.Success
+statusLabel.TextSize = 14
+statusLabel.Font = Enum.Font.GothamBold
+statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+statusLabel.Parent = statusCard
+
+local countLabel = Instance.new("TextLabel")
+countLabel.Size = UDim2.new(1, -20, 0, 20)
+countLabel.Position = UDim2.new(0, 10, 0, 30)
+countLabel.BackgroundTransparency = 1
+countLabel.Text = "Removed: 0 | Kept: 0"
+countLabel.TextColor3 = COLORS.TextDim
+countLabel.TextSize = 13
+countLabel.Font = Enum.Font.Gotham
+countLabel.TextXAlignment = Enum.TextXAlignment.Left
+countLabel.Parent = statusCard
+
+createSectionHeader("DIGGING TOOLS", 20)
+local digToggle = createToggle("Fast Dig (Eclipse Fang)", false, 21)
+
+-- ============================================================
+-- KILLSWITCH (COMPLETE SYSTEM RESET)
+-- ============================================================
+local closeButton = createActionButton("KILLSWITCH (Complete Reset)", Color3.fromRGB(180, 60, 60), 22, function()
+    scriptActive = false
+    hazardNukeActive = false
+    
+    for _, conn in ipairs(allConnections) do
+        pcall(function() conn:Disconnect() end)
+    end
+    allConnections = {}
+    
+    for _, hl in pairs(boulderHighlights) do pcall(function() hl:Destroy() end) end
+    boulderHighlights = {}
+    
+    for _, label in pairs(boulderLabels) do pcall(function() label:Destroy() end) end
+    boulderLabels = {}
+    
+    for _, hl in pairs(runeHighlights) do pcall(function() hl:Destroy() end) end
+    runeHighlights = {}
+    
+    for _, label in pairs(runeLabels) do pcall(function() label:Destroy() end) end
+    runeLabels = {}
+    
+    for _, folder in ipairs(getCrystalFolders()) do
+        for _, crystal in ipairs(folder:GetChildren()) do
+            local hl = crystal:FindFirstChild("Highlight")
+            if hl then pcall(function() hl:Destroy() end) end
+        end
+    end
+    
+    pcall(function() applyToolBuffs(false) end)
+    
+    task.wait(0.1)
+    pcall(function() screenGui:Destroy() end)
+    pcall(function() indicatorGui:Destroy() end)
+    
+    print("[GameControl] COMPLETE SYSTEM RESET - All loops stopped, all highlights cleared, GUI destroyed")
+end)
+
+-- ============================================================
+-- VISUAL ENGINES
+-- ============================================================
+local function updateVisuals()
+    if not scriptActive then return end
+    
+    local xrayOn = toggles["Crystal X-Ray (T4/T5/T6)"].state
+    
+    if not xrayOn then
+        for _, folder in ipairs(getCrystalFolders()) do
+            for _, crystal in ipairs(folder:GetChildren()) do
+                local hl = crystal:FindFirstChild("Highlight")
+                if hl then hl:Destroy() end
+            end
+        end
+        return
+    end
+
+    for _, folder in ipairs(getCrystalFolders()) do
+        for _, crystal in ipairs(folder:GetChildren()) do
+            if crystal:IsA("BasePart") then
+                local tier = tonumber(crystal.Name:match("T(%d+)"))
+                local targetColor = nil
+                if tier then
+                    if tier >= 4 then
+                        if tier == 6 then targetColor = Color3.fromRGB(100, 255, 255)
+                        elseif tier == 5 then targetColor = Color3.fromRGB(255, 100, 255)
+                        elseif tier == 4 then targetColor = Color3.fromRGB(255, 255, 100)
+                        end
+                    end
+                end
+                
+                local hl = crystal:FindFirstChild("Highlight")
+                if targetColor then
+                    if hl then
+                        if hl.FillColor ~= targetColor then hl.FillColor = targetColor; hl.OutlineColor = targetColor end
+                    else
+                        hl = Instance.new("Highlight")
+                        hl.Name = "Highlight"
+                        hl.FillColor = targetColor; hl.FillTransparency = 0.7
+                        hl.OutlineColor = targetColor; hl.OutlineTransparency = 0.3
+                        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                        hl.Parent = crystal
+                    end
+                else
+                    if hl then hl:Destroy() end
+                end
+            end
+        end
+    end
+end
+
+local function getBoulderFolder()
+    for _, path in ipairs({{"MountainDecorations", "Boulders"}, {"Map", "MountainDecorations", "Boulders"}, {"TerrainObjects", "Boulders"}, {"Boulders"}}) do
+        local current = Workspace
+        local found = true
+        for _, name in ipairs(path) do
+            current = current:FindFirstChild(name)
+            if not current then found = false; break end
+        end
+        if found then return current end
+    end
+    return nil
+end
+
+local function getBoulderColor(part)
+    local combined = (part.Name .. " " .. tostring(part:GetAttribute("Rarity") or part:GetAttribute("Tier") or "")):lower()
+    if combined:find("mythic") or combined:find("void") or combined:find("celestial") or combined:find("legendary") then return Color3.fromRGB(255, 215, 0) end
+    if combined:find("diamond") or combined:find("gold") or combined:find("epic") then return Color3.fromRGB(0, 255, 255) end
+    if combined:find("rare") or combined:find("silver") or combined:find("iron") then return Color3.fromRGB(180, 80, 255) end
+    return Color3.fromRGB(110, 30, 160) 
+end
+
+local function formatBoulderName(name)
+	return name:gsub("Boulder_", ""):gsub("_", " ")
+end
+
+local function applyBoulderVisuals(boulder)
+    if boulderHighlights[boulder] then return end
+    if not boulder:IsA("Model") and not boulder:IsA("BasePart") then return end
+    
+    local hl = Instance.new("Highlight")
+    hl.Parent = boulder
+    hl.FillColor = getBoulderColor(boulder)
+    hl.OutlineTransparency = 1 
+    hl.FillTransparency = 0.15 
+    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop 
+    boulderHighlights[boulder] = hl
+
+    local gui = Instance.new("BillboardGui")
+    gui.Name = "BoulderNameGui"
+    gui.Size = UDim2.new(0, 100, 0, 40)
+    gui.StudsOffset = Vector3.new(0, 3, 0)
+    gui.AlwaysOnTop = true
+    gui.MaxDistance = 5000
+    gui.Adornee = boulder
+    gui.Parent = playerGui
+
+    local textLabel = Instance.new("TextLabel")
+    textLabel.Size = UDim2.new(1, 0, 1, 0)
+    textLabel.BackgroundTransparency = 1
+    textLabel.Text = formatBoulderName(boulder.Name)
+    textLabel.TextColor3 = getBoulderColor(boulder)
+    textLabel.TextScaled = true
+    textLabel.Font = Enum.Font.GothamBold
+    textLabel.TextStrokeTransparency = 0.1
+    textLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    textLabel.Parent = gui
+
+    boulderLabels[boulder] = textLabel
+end
+
+local function updateBoulderXray(state)
+    if not scriptActive then return end
+    
+    local bouldersRoot = getBoulderFolder()
+    if not bouldersRoot then 
+        statusLabel.Text = "Status: Boulders folder not found"; statusLabel.TextColor3 = COLORS.Warning; return 
+    end
+    
+    for _, hl in pairs(boulderHighlights) do pcall(function() hl:Destroy() end) end
+    boulderHighlights = {}
+    for _, label in pairs(boulderLabels) do pcall(function() label:Destroy() end) end
+    boulderLabels = {}
+
+    if state then
+        local count = 0
+        for _, boulder in ipairs(bouldersRoot:GetChildren()) do
+            applyBoulderVisuals(boulder)
+            count += 1
+        end
+        statusLabel.Text = ("Status: Boulder X-Ray enabled (%d found)"):format(count)
+        statusLabel.TextColor3 = COLORS.Success
+        
+        if not bouldersRoot:GetAttribute("XrayHooked") then
+            bouldersRoot:SetAttribute("XrayHooked", true)
+            local conn = bouldersRoot.ChildAdded:Connect(function(child)
+                if not scriptActive then return end
+                if toggles["Boulder X-Ray (5000 Studs)"].state then
+                    applyBoulderVisuals(child)
+                end
+            end)
+            table.insert(allConnections, conn)
+        end
+    else
+        statusLabel.Text = "Status: Boulder X-Ray disabled"; statusLabel.TextColor3 = COLORS.TextDim
+    end
+end
+
+-- AUTO-RUNE X-RAY
+local RUNE_NAMES = {
+    "Luck Rune", "Haste Rune", "Storm Rune", "Weight Rune", "Fortune Rune",
+    "Detonation Rune", "Preservation Rune", "Warmth Rune", "Excavator Rune", "Colossus Rune"
+}
+local isRune = {}
+for _, name in ipairs(RUNE_NAMES) do isRune[name] = true end
+
+local function applyRuneVisuals(rune)
+    if runeHighlights[rune] then return end
+    
+    local hl = Instance.new("Highlight")
+    hl.Parent = rune
+    hl.FillColor = Color3.fromRGB(255, 60, 60)
+    hl.OutlineTransparency = 1 
+    hl.FillTransparency = 0.15 
+    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop 
+    runeHighlights[rune] = hl
+
+    local gui = Instance.new("BillboardGui")
+    gui.Name = "RuneNameGui"
+    gui.Size = UDim2.new(0, 100, 0, 40)
+    gui.StudsOffset = Vector3.new(0, 3, 0)
+    gui.AlwaysOnTop = true
+    gui.MaxDistance = 60
+    gui.Adornee = rune
+    gui.Parent = playerGui
+
+    local textLabel = Instance.new("TextLabel")
+    textLabel.Size = UDim2.new(1, 0, 1, 0)
+    textLabel.BackgroundTransparency = 1
+    textLabel.Text = rune.Name
+    textLabel.TextColor3 = Color3.fromRGB(255, 60, 60)
+    textLabel.TextScaled = true
+    textLabel.Font = Enum.Font.GothamBold
+    textLabel.TextStrokeTransparency = 0.1
+    textLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    textLabel.Parent = gui
+
+    runeLabels[rune] = textLabel
+end
+
+local function initAutoRuneXray()
+    for _, child in ipairs(Workspace:GetDescendants()) do
+        if isRune[child.Name] or child.Name:find("Rune") then
+            applyRuneVisuals(child)
+        end
+    end
+    
+    local conn = Workspace.DescendantAdded:Connect(function(child)
+        if not scriptActive then return end
+        if isRune[child.Name] or child.Name:find("Rune") then
+            applyRuneVisuals(child)
+        end
+    end)
+    table.insert(allConnections, conn)
+end
+
+initAutoRuneXray()
+
+-- RAPID FIRE AUTO DIG
+local function getDigPosition()
+    local cam = Workspace.CurrentCamera
+    local hrp = humanoidRootPart
+    if not (cam and hrp) then return nil end
+    
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Include
+    local filter = {Workspace.Terrain}
+    local boulders = getBoulderFolder()
+    if boulders then table.insert(filter, boulders) end
+    params.FilterDescendantsInstances = filter
+    
+    local reach = 54
+    local result = Workspace:Raycast(cam.CFrame.Position, cam.CFrame.LookVector * reach, params)
+    if result then return result.Position end
+    
+    result = Workspace:Raycast(hrp.Position, cam.CFrame.LookVector * reach, params)
+    if result then return result.Position end
+    
+    return nil
+end
+
+task.spawn(function()
+    while scriptActive do
+        if toggles["Auto Dig (Middle Mouse)"] and toggles["Auto Dig (Middle Mouse)"].state and DigRequest then
+            local pos = getDigPosition()
+            if pos then
+                pcall(function()
+                    DigRequest:FireServer(toolName, pos)
+                end)
+            end
+        end
+        task.wait()
+    end
+end)
+
+-- CLEANER
+local function getTierAndMinWeight(name)
+	local tier = tonumber(name:match("T(%d+)"))
+	if not tier then return 0, 0 end
+	
+	if tier == 1 then return tier, weightThresholds.Common
+	elseif tier == 2 then return tier, weightThresholds.Uncommon
+	elseif tier == 3 then return tier, weightThresholds.Rare
+	elseif tier == 4 then return tier, weightThresholds.Epic
+	elseif tier == 5 then return tier, weightThresholds.Legendary
+	elseif tier == 6 then return tier, weightThresholds.Mythic
+	else return tier, 0 end
+end
+
+local function runCleaner()
+    if not scriptActive then return end
+    
+	for _, folder in ipairs(getCrystalFolders()) do
+		for _, crystal in ipairs(folder:GetChildren()) do
+			if crystal:IsA("BasePart") then
+				local tier, minWeight = getTierAndMinWeight(crystal.Name)
+				if tier > 0 and (crystal:GetAttribute("WeightKg") or 0) < minWeight then
+					crystal:Destroy(); removedCrystals += 1
+				end
+			end
+		end
+	end
+	countLabel.Text = "Removed: " .. removedCrystals .. " | Kept: " .. keptHeavyCrystals
+end
+
+local function applyToolBuffs(enable)
+	local tool = player.Backpack:FindFirstChild(toolName) or (player.Character and player.Character:FindFirstChild(toolName))
+	if tool then 
+        tool:SetAttribute("NoSwingCooldown", enable)
+        tool:SetAttribute("OverrideMaxReach", enable and 50 or 16) 
+    end
+end
+
+player.CharacterAdded:Connect(function() 
+    task.wait(1)
+    if toggles["Fast Dig (Eclipse Fang)"] and toggles["Fast Dig (Eclipse Fang)"].state then applyToolBuffs(true) end
+end)
+
+-- Callbacks
+digToggle.callbacks = {function(state)
+	applyToolBuffs(state)
+	statusLabel.Text = state and "Status: Fast Dig enabled" or "Status: Fast Dig disabled"
+	statusLabel.TextColor3 = state and COLORS.Success or COLORS.TextDim
+end}
+
+autoDigToggle.callbacks = {function(state)
+    statusLabel.Text = state and "Status: Rapid Fire Dig enabled" or "Status: Rapid Fire Dig disabled"
+    statusLabel.TextColor3 = state and COLORS.Success or COLORS.TextDim
+    
+    updateAutoDigIndicator(state)
+end}
+
+hazardToggle.callbacks = {function(state)
+    hazardNukeActive = state
+    if state then 
+        nukeHazards()
+        statusLabel.Text = "Status: Hazard Remover enabled"
+    else 
+        statusLabel.Text = "Status: Hazard Remover disabled"
+    end
+    statusLabel.TextColor3 = state and COLORS.Success or COLORS.TextDim
+end}
+
+xrayToggle.callbacks = {function() end}
+boulderXrayToggle.callbacks = {updateBoulderXray}
+
+-- HOTKEYS
+UserInputService.InputBegan:Connect(function(input, gpe)
+	if gpe then return end
+	if input.KeyCode == Enum.KeyCode.Delete then 
+        closeButton.MouseButton1Click:Fire()
+	elseif input.KeyCode == Enum.KeyCode.C then 
+        mainFrame.Visible = not mainFrame.Visible 
+    elseif input.UserInputType == Enum.UserInputType.MouseButton3 then
+        if not scriptActive then return end
+        local newState = not autoDigToggle.state
+        autoDigToggle.state = newState
+        
+        local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        if newState then
+            TweenService:Create(autoDigToggle.switchBg, tweenInfo, {BackgroundColor3 = COLORS.Success}):Play()
+            TweenService:Create(autoDigToggle.switchKnob, tweenInfo, {Position = UDim2.new(1, -24, 0.5, -11)}):Play()
+        else
+            TweenService:Create(autoDigToggle.switchBg, tweenInfo, {BackgroundColor3 = Color3.fromRGB(80, 80, 90)}):Play()
+            TweenService:Create(autoDigToggle.switchKnob, tweenInfo, {Position = UDim2.new(0, 2, 0.5, -11)}):Play()
+        end
+        
+        for _, callback in ipairs(autoDigToggle.callbacks) do pcall(callback, newState) end
+        statusLabel.Text = "Status: Auto Dig toggled via Middle Mouse"
+	end
+end)
+
+-- MAIN LOOP
+local lastTime = tick()
+local frameCount = 0
+local lastHeavyScan = 0
+
+RunService.Heartbeat:Connect(function(dt)
+    if not scriptActive then return end
+    
+    frameCount += 1
+    local now = tick()
+    if now - lastTime >= 1 then
+        local fps = math.floor(frameCount / (now - lastTime))
+        local ping = math.floor(player:GetNetworkPing() * 1000)
+        fpsLabel.Text = "FPS: " .. fps .. " | Ping: " .. ping .. "ms"
+        frameCount = 0
+        lastTime = now
+    end
+
+    lastHeavyScan += dt
+    if lastHeavyScan >= 0.5 then
+        lastHeavyScan = 0
+        
+        runCleaner()
+        updateVisuals()
+    end
+end)
+
+print("Unified Game Control Panel v8.7 loaded!")
