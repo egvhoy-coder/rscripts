@@ -1,4 +1,4 @@
--- Unified Game Control Panel v9.2 - Indicator Down, Position Button Feedback, Teleport Button, Boulder X-Ray in Boulder Control
+-- Unified Game Control Panel v9.3 - Fixed Boulder Names
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
@@ -87,7 +87,7 @@ local function getToolName()
 end
 
 -- ============================================================
--- FLOATING AUTO DIG INDICATOR (Moved down 2px)
+-- FLOATING AUTO DIG INDICATOR
 -- ============================================================
 local indicatorGui = Instance.new("ScreenGui")
 indicatorGui.Name = "AutoDigIndicator"
@@ -99,7 +99,7 @@ indicatorGui.Parent = playerGui
 local indicatorFrame = Instance.new("Frame")
 indicatorFrame.Name = "Indicator"
 indicatorFrame.Size = UDim2.new(0, 140, 0, 32)
-indicatorFrame.Position = UDim2.new(0.5, 0, 1, -198) -- Changed from -200 to -198
+indicatorFrame.Position = UDim2.new(0.5, 0, 1, -198)
 indicatorFrame.AnchorPoint = Vector2.new(0.5, 0)
 indicatorFrame.BackgroundColor3 = COLORS.Background
 indicatorFrame.BorderSizePixel = 0
@@ -545,18 +545,14 @@ local function createWeightInput(name, label, defaultValue, order)
 end
 
 -- ============================================================
--- BUILD GUI (Reorganized)
+-- BUILD GUI
 -- ============================================================
-
--- SECTION 1: VISUAL FEATURES (Boulder X-Ray moved to Boulder Control)
 createSectionHeader("VISUAL FEATURES", 1)
 local xrayToggle = createToggle("Crystal X-Ray (T4/T5/T6)", true, 2)
 
--- SECTION 2: DIGGING TOOLS
 createSectionHeader("DIGGING TOOLS", 3)
 local digToggle = createToggle("Fast Dig", false, 4)
 
--- SECTION 3: CRYSTAL MANAGEMENT
 createSectionHeader("CRYSTAL MANAGEMENT", 5)
 local hazardToggle = createToggle("Hazard Remover (Lava/Rocks/Avalanche)", true, 6)
 local cleanBtn = createActionButton("Clear All Map Crystals", Color3.fromRGB(200, 100, 0), 7, function()
@@ -566,13 +562,10 @@ local cleanBtn = createActionButton("Clear All Map Crystals", Color3.fromRGB(200
 end)
 local crystalCapToggle = createToggle("Crystal Cap (200 Max)", false, 8)
 
--- SECTION 4: BOULDER CONTROL (Boulder X-Ray moved here)
 createSectionHeader("BOULDER CONTROL", 9)
-
--- Boulder X-Ray toggle (moved from Visual Features)
 local boulderXrayToggle = createToggle("Boulder Names (5000 Studs)", false, 10)
 
--- Position input row with Set and TP buttons
+-- Position input row
 local posCard = Instance.new("Frame")
 posCard.Size = UDim2.new(1, 0, 0, 50)
 posCard.BackgroundColor3 = COLORS.Card
@@ -631,14 +624,11 @@ tpPosBtn.AutoButtonColor = false
 tpPosBtn.Parent = posCard
 Instance.new("UICorner", tpPosBtn).CornerRadius = UDim.new(0, 6)
 
--- Set button with color feedback
 setPosBtn.MouseButton1Click:Connect(function()
     local text = posInput.Text
     local x, y, z = text:match("(-?%d+%.?%d*)%s*,%s*(-?%d+%.?%d*)%s*,%s*(-?%d+%.?%d*)")
     if x and y and z then
         boulderTargetPos = Vector3.new(tonumber(x), tonumber(y), tonumber(z))
-        
-        -- Flash green to confirm
         setPosBtn.BackgroundColor3 = COLORS.Success
         task.delay(0.5, function()
             setPosBtn.BackgroundColor3 = COLORS.Accent
@@ -646,14 +636,11 @@ setPosBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- Teleport button
 tpPosBtn.MouseButton1Click:Connect(function()
     local char = player.Character
     local rootPart = char and char:FindFirstChild("HumanoidRootPart")
     if rootPart then
         rootPart.CFrame = CFrame.new(boulderTargetPos)
-        
-        -- Flash to confirm
         tpPosBtn.BackgroundColor3 = COLORS.Success
         task.delay(0.5, function()
             tpPosBtn.BackgroundColor3 = Color3.fromRGB(100, 180, 100)
@@ -661,7 +648,6 @@ tpPosBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- Move unanchored button
 local moveBouldersBtn = createActionButton("Move Unanchored to Target", Color3.fromRGB(70, 120, 180), 12, function()
     local count = moveUnanchoredBoulders()
     statusLabel.Text = ("Status: Moved %d unanchored boulders"):format(count)
@@ -688,7 +674,6 @@ Instance.new("UIPadding", boulderRow).PaddingBottom = UDim.new(0, 5)
 Instance.new("UIPadding", boulderRow).PaddingLeft = UDim.new(0, 5)
 Instance.new("UIPadding", boulderRow).PaddingRight = UDim.new(0, 5)
 
--- 5 Boulder TP Buttons
 local boulderData = {
     { name = "M", fullName = "Mossite", color = Color3.fromRGB(80, 180, 80) },
     { name = "V", fullName = "Voidtite", color = Color3.fromRGB(120, 60, 180) },
@@ -730,7 +715,6 @@ for i, data in ipairs(boulderData) do
     end)
 end
 
--- Status display
 local statusCard = Instance.new("Frame")
 statusCard.Size = UDim2.new(1, 0, 0, 60)
 statusCard.BackgroundColor3 = COLORS.Card
@@ -761,7 +745,6 @@ countLabel.Font = Enum.Font.Gotham
 countLabel.TextXAlignment = Enum.TextXAlignment.Left
 countLabel.Parent = statusCard
 
--- SECTION 5: WEIGHT THRESHOLDS
 createSectionHeader("WEIGHT THRESHOLDS", 15)
 createWeightInput("Common", "Common (T1)", 1000, 16)
 createWeightInput("Uncommon", "Uncommon (T2)", 1000, 17)
@@ -859,15 +842,26 @@ local function updateVisuals()
     end
 end
 
--- SCANS ENTIRE MAP for boulders (not just MountainDecorations)
+-- FIXED: Get boulders from known location OR scan entire workspace
 local function getAllBoulders()
     local boulders = {}
     
-    -- Scan entire workspace for anything with "Boulder" in name
+    -- First, try the known location
+    local bouldersRoot = Workspace:FindFirstChild("MountainDecorations")
+    if bouldersRoot then bouldersRoot = bouldersRoot:FindFirstChild("Boulders") end
+    
+    if bouldersRoot then
+        for _, boulder in ipairs(bouldersRoot:GetChildren()) do
+            if boulder:IsA("Model") or boulder:IsA("BasePart") then
+                table.insert(boulders, boulder)
+            end
+        end
+    end
+    
+    -- Also scan entire workspace for any boulders outside the known location
     for _, desc in ipairs(Workspace:GetDescendants()) do
         if desc:IsA("Model") or desc:IsA("BasePart") then
-            local name = desc.Name:lower()
-            if name:find("boulder") then
+            if desc.Name:lower():find("boulder") and not table.find(boulders, desc) then
                 table.insert(boulders, desc)
             end
         end
@@ -879,18 +873,12 @@ end
 local function getBoulderColor(part)
     local combined = (part.Name .. " " .. tostring(part:GetAttribute("Rarity") or part:GetAttribute("Tier") or "")):lower()
     
-    -- Mossite = Green (matching button color)
     if combined:find("mossite") then return Color3.fromRGB(80, 180, 80) end
-    -- Voidtite = Purple
     if combined:find("voidtite") or combined:find("void") then return Color3.fromRGB(120, 60, 180) end
-    -- Gildrite = Gold
     if combined:find("gildrite") or combined:find("gold") then return Color3.fromRGB(220, 180, 50) end
-    -- Rimeveil = Cyan
     if combined:find("rimeveil") or combined:find("ice") or combined:find("frost") then return Color3.fromRGB(100, 200, 220) end
-    -- Nocturnite = Dark Blue
     if combined:find("nocturnite") or combined:find("night") or combined:find("dark") then return Color3.fromRGB(60, 60, 120) end
     
-    -- Fallback colors
     if combined:find("mythic") or combined:find("celestial") or combined:find("legendary") then return Color3.fromRGB(255, 215, 0) end
     if combined:find("diamond") or combined:find("epic") then return Color3.fromRGB(0, 255, 255) end
     if combined:find("rare") or combined:find("silver") or combined:find("iron") then return Color3.fromRGB(180, 80, 255) end
@@ -946,7 +934,6 @@ local function updateBoulderXray(state)
         statusLabel.Text = ("Status: Boulder Names enabled (%d found)"):format(count)
         statusLabel.TextColor3 = COLORS.Success
         
-        -- Hook for new boulders spawning anywhere
         if not Workspace:GetAttribute("BoulderXrayHooked") then
             Workspace:SetAttribute("BoulderXrayHooked", true)
             local conn = Workspace.DescendantAdded:Connect(function(child)
@@ -1215,4 +1202,4 @@ RunService.Heartbeat:Connect(function(dt)
     end
 end)
 
-print("Unified Game Control Panel v9.2 loaded!")
+print("Unified Game Control Panel v9.3 loaded!")
