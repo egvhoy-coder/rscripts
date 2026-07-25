@@ -1,4 +1,4 @@
--- Unified Game Control Panel v9.3 - Fixed Boulder Names
+-- Unified Game Control Panel v9.4 - Fixed Boulder TP Buttons, Removed TP Button, Optimized
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
@@ -226,7 +226,7 @@ end
 task.spawn(function()
     while scriptActive do
         if hazardNukeActive then nukeHazards() end
-        task.wait(0.5)
+        task.wait(1) -- Changed from 0.5 to 1 to reduce lag
     end
 end)
 
@@ -269,6 +269,7 @@ local function moveUnanchoredBoulders()
     return count
 end
 
+-- FIXED: Get anchored boulders filtered by name
 local function getAnchoredBoulders()
     local bouldersRoot = Workspace:FindFirstChild("MountainDecorations")
     if bouldersRoot then bouldersRoot = bouldersRoot:FindFirstChild("Boulders") end
@@ -281,6 +282,35 @@ local function getAnchoredBoulders()
         end
     end
     return anchored
+end
+
+-- NEW: Get closest anchored boulder by specific type
+local function getClosestBoulderByType(boulderType)
+    local bouldersRoot = Workspace:FindFirstChild("MountainDecorations")
+    if bouldersRoot then bouldersRoot = bouldersRoot:FindFirstChild("Boulders") end
+    if not bouldersRoot then return nil end
+    
+    local char = player.Character
+    local rootPart = char and char:FindFirstChild("HumanoidRootPart")
+    if not rootPart then return nil end
+    
+    local closest = nil
+    local minDist = math.huge
+    
+    for _, desc in pairs(bouldersRoot:GetDescendants()) do
+        if desc:IsA("BasePart") and desc.Anchored then
+            -- Check if boulder name contains the type (case-insensitive)
+            if desc.Name:lower():find(boulderType:lower()) then
+                local dist = (rootPart.Position - desc.Position).Magnitude
+                if dist < minDist then
+                    minDist = dist
+                    closest = desc
+                end
+            end
+        end
+    end
+    
+    return closest
 end
 
 local function tpToBoulder(boulderPart)
@@ -565,7 +595,7 @@ local crystalCapToggle = createToggle("Crystal Cap (200 Max)", false, 8)
 createSectionHeader("BOULDER CONTROL", 9)
 local boulderXrayToggle = createToggle("Boulder Names (5000 Studs)", false, 10)
 
--- Position input row
+-- Position input row (REMOVED TP BUTTON)
 local posCard = Instance.new("Frame")
 posCard.Size = UDim2.new(1, 0, 0, 50)
 posCard.BackgroundColor3 = COLORS.Card
@@ -575,7 +605,7 @@ posCard.Parent = scrollFrame
 Instance.new("UICorner", posCard).CornerRadius = UDim.new(0, 10)
 
 local posLabel = Instance.new("TextLabel")
-posLabel.Size = UDim2.new(0.3, 0, 1, 0)
+posLabel.Size = UDim2.new(0.4, 0, 1, 0)
 posLabel.Position = UDim2.new(0, 10, 0, 0)
 posLabel.BackgroundTransparency = 1
 posLabel.Text = "Position:"
@@ -586,8 +616,8 @@ posLabel.TextXAlignment = Enum.TextXAlignment.Left
 posLabel.Parent = posCard
 
 local posInput = Instance.new("TextBox")
-posInput.Size = UDim2.new(0, 100, 0, 30)
-posInput.Position = UDim2.new(0.3, 5, 0.5, -15)
+posInput.Size = UDim2.new(0, 120, 0, 30)
+posInput.Position = UDim2.new(0.4, 5, 0.5, -15)
 posInput.BackgroundColor3 = COLORS.Background
 posInput.Text = "33, 43, 922"
 posInput.TextColor3 = COLORS.Text
@@ -599,8 +629,8 @@ posInput.Parent = posCard
 Instance.new("UICorner", posInput).CornerRadius = UDim.new(0, 6)
 
 local setPosBtn = Instance.new("TextButton")
-setPosBtn.Size = UDim2.new(0, 45, 0, 30)
-setPosBtn.Position = UDim2.new(0.65, 0, 0.5, -15)
+setPosBtn.Size = UDim2.new(0, 50, 0, 30)
+setPosBtn.Position = UDim2.new(1, -60, 0.5, -15)
 setPosBtn.BackgroundColor3 = COLORS.Accent
 setPosBtn.Text = "Set"
 setPosBtn.TextColor3 = COLORS.Text
@@ -611,19 +641,6 @@ setPosBtn.AutoButtonColor = false
 setPosBtn.Parent = posCard
 Instance.new("UICorner", setPosBtn).CornerRadius = UDim.new(0, 6)
 
-local tpPosBtn = Instance.new("TextButton")
-tpPosBtn.Size = UDim2.new(0, 45, 0, 30)
-tpPosBtn.Position = UDim2.new(1, -55, 0.5, -15)
-tpPosBtn.BackgroundColor3 = Color3.fromRGB(100, 180, 100)
-tpPosBtn.Text = "TP"
-tpPosBtn.TextColor3 = COLORS.Text
-tpPosBtn.TextSize = 13
-tpPosBtn.Font = Enum.Font.GothamBold
-tpPosBtn.BorderSizePixel = 0
-tpPosBtn.AutoButtonColor = false
-tpPosBtn.Parent = posCard
-Instance.new("UICorner", tpPosBtn).CornerRadius = UDim.new(0, 6)
-
 setPosBtn.MouseButton1Click:Connect(function()
     local text = posInput.Text
     local x, y, z = text:match("(-?%d+%.?%d*)%s*,%s*(-?%d+%.?%d*)%s*,%s*(-?%d+%.?%d*)")
@@ -632,18 +649,6 @@ setPosBtn.MouseButton1Click:Connect(function()
         setPosBtn.BackgroundColor3 = COLORS.Success
         task.delay(0.5, function()
             setPosBtn.BackgroundColor3 = COLORS.Accent
-        end)
-    end
-end)
-
-tpPosBtn.MouseButton1Click:Connect(function()
-    local char = player.Character
-    local rootPart = char and char:FindFirstChild("HumanoidRootPart")
-    if rootPart then
-        rootPart.CFrame = CFrame.new(boulderTargetPos)
-        tpPosBtn.BackgroundColor3 = COLORS.Success
-        task.delay(0.5, function()
-            tpPosBtn.BackgroundColor3 = Color3.fromRGB(100, 180, 100)
         end)
     end
 end)
@@ -674,15 +679,16 @@ Instance.new("UIPadding", boulderRow).PaddingBottom = UDim.new(0, 5)
 Instance.new("UIPadding", boulderRow).PaddingLeft = UDim.new(0, 5)
 Instance.new("UIPadding", boulderRow).PaddingRight = UDim.new(0, 5)
 
+-- FIXED: 5 Boulder TP Buttons with type filtering
 local boulderData = {
-    { name = "M", fullName = "Mossite", color = Color3.fromRGB(80, 180, 80) },
-    { name = "V", fullName = "Voidtite", color = Color3.fromRGB(120, 60, 180) },
-    { name = "G", fullName = "Gildrite", color = Color3.fromRGB(220, 180, 50) },
-    { name = "R", fullName = "Rimeveil", color = Color3.fromRGB(100, 200, 220) },
-    { name = "N", fullName = "Nocturnite", color = Color3.fromRGB(60, 60, 120) }
+    { name = "M", fullName = "Mossite", type = "Mossite", color = Color3.fromRGB(80, 180, 80) },
+    { name = "V", fullName = "Voidtite", type = "Voidtite", color = Color3.fromRGB(120, 60, 180) },
+    { name = "G", fullName = "Gildrite", type = "Gildrite", color = Color3.fromRGB(220, 180, 50) },
+    { name = "R", fullName = "Rimeveil", type = "Rimeveil", color = Color3.fromRGB(100, 200, 220) },
+    { name = "N", fullName = "Nocturnite", type = "Nocturnite", color = Color3.fromRGB(60, 60, 120) }
 }
 
-for i, data in ipairs(boulderData) do
+for _, data in ipairs(boulderData) do
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(0, 60, 0, 35)
     btn.BackgroundColor3 = data.color
@@ -695,14 +701,15 @@ for i, data in ipairs(boulderData) do
     btn.Parent = boulderRow
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
     
+    -- FIXED: Find closest boulder of THIS specific type
     btn.MouseButton1Click:Connect(function()
-        local anchored = getAnchoredBoulders()
-        if i <= #anchored then
-            tpToBoulder(anchored[i])
+        local closestBoulder = getClosestBoulderByType(data.type)
+        if closestBoulder then
+            tpToBoulder(closestBoulder)
             statusLabel.Text = ("Status: Teleported to %s"):format(data.fullName)
             statusLabel.TextColor3 = COLORS.Success
         else
-            statusLabel.Text = ("Status: %s not found"):format(data.fullName)
+            statusLabel.Text = ("Status: No %s found nearby"):format(data.fullName)
             statusLabel.TextColor3 = COLORS.Warning
         end
     end)
@@ -842,11 +849,9 @@ local function updateVisuals()
     end
 end
 
--- FIXED: Get boulders from known location OR scan entire workspace
 local function getAllBoulders()
     local boulders = {}
     
-    -- First, try the known location
     local bouldersRoot = Workspace:FindFirstChild("MountainDecorations")
     if bouldersRoot then bouldersRoot = bouldersRoot:FindFirstChild("Boulders") end
     
@@ -858,7 +863,6 @@ local function getAllBoulders()
         end
     end
     
-    -- Also scan entire workspace for any boulders outside the known location
     for _, desc in ipairs(Workspace:GetDescendants()) do
         if desc:IsA("Model") or desc:IsA("BasePart") then
             if desc.Name:lower():find("boulder") and not table.find(boulders, desc) then
@@ -1174,7 +1178,7 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 	end
 end)
 
--- MAIN LOOP
+-- MAIN LOOP (OPTIMIZED - runs every 1 second instead of 0.5)
 local lastTime = tick()
 local frameCount = 0
 local lastHeavyScan = 0
@@ -1193,7 +1197,7 @@ RunService.Heartbeat:Connect(function(dt)
     end
 
     lastHeavyScan += dt
-    if lastHeavyScan >= 0.5 then
+    if lastHeavyScan >= 1 then -- Changed from 0.5 to 1 to reduce lag
         lastHeavyScan = 0
         
         runCleaner()
@@ -1202,4 +1206,4 @@ RunService.Heartbeat:Connect(function(dt)
     end
 end)
 
-print("Unified Game Control Panel v9.3 loaded!")
+print("Unified Game Control Panel v9.4 loaded!")
