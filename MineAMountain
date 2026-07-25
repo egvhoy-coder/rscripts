@@ -1,4 +1,4 @@
--- Unified Game Control Panel v9.1 - Named Boulder Buttons, Custom Position, Reorganized GUI
+-- Unified Game Control Panel v9.2 - Indicator Down, Position Button Feedback, Teleport Button, Boulder X-Ray in Boulder Control
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
@@ -50,7 +50,7 @@ pcall(function()
 end)
 
 -- ============================================================
--- DYNAMIC TOOL NAME (Auto-detects current pickaxe)
+-- DYNAMIC TOOL NAME
 -- ============================================================
 local PICKAXE_NAMES = {
     "Rusty Scrapper", "Weathered Wood", "Chipped Stone", "Hardened Iron",
@@ -64,7 +64,6 @@ local function getCurrentPickaxe()
     local char = player.Character
     local backpack = player:FindFirstChild("Backpack")
     
-    -- Check equipped tool first
     if char then
         for _, name in ipairs(PICKAXE_NAMES) do
             local tool = char:FindFirstChild(name)
@@ -72,7 +71,6 @@ local function getCurrentPickaxe()
         end
     end
     
-    -- Check backpack
     if backpack then
         for _, name in ipairs(PICKAXE_NAMES) do
             local tool = backpack:FindFirstChild(name)
@@ -89,7 +87,7 @@ local function getToolName()
 end
 
 -- ============================================================
--- FLOATING AUTO DIG INDICATOR
+-- FLOATING AUTO DIG INDICATOR (Moved down 2px)
 -- ============================================================
 local indicatorGui = Instance.new("ScreenGui")
 indicatorGui.Name = "AutoDigIndicator"
@@ -101,7 +99,7 @@ indicatorGui.Parent = playerGui
 local indicatorFrame = Instance.new("Frame")
 indicatorFrame.Name = "Indicator"
 indicatorFrame.Size = UDim2.new(0, 140, 0, 32)
-indicatorFrame.Position = UDim2.new(0.5, 0, 1, -200)
+indicatorFrame.Position = UDim2.new(0.5, 0, 1, -198) -- Changed from -200 to -198
 indicatorFrame.AnchorPoint = Vector2.new(0.5, 0)
 indicatorFrame.BackgroundColor3 = COLORS.Background
 indicatorFrame.BorderSizePixel = 0
@@ -185,7 +183,7 @@ end
 setupCrystalWatcher()
 
 -- ============================================================
--- HAZARD REMOVER (Ghost Rocks)
+-- HAZARD REMOVER
 -- ============================================================
 local hazardNukeActive = true
 
@@ -547,32 +545,34 @@ local function createWeightInput(name, label, defaultValue, order)
 end
 
 -- ============================================================
--- BUILD GUI (Reorganized Sections)
+-- BUILD GUI (Reorganized)
 -- ============================================================
 
--- SECTION 1: VISUAL FEATURES
+-- SECTION 1: VISUAL FEATURES (Boulder X-Ray moved to Boulder Control)
 createSectionHeader("VISUAL FEATURES", 1)
 local xrayToggle = createToggle("Crystal X-Ray (T4/T5/T6)", true, 2)
-local boulderXrayToggle = createToggle("Boulder Names (5000 Studs)", false, 3)
 
 -- SECTION 2: DIGGING TOOLS
-createSectionHeader("DIGGING TOOLS", 4)
-local digToggle = createToggle("Fast Dig", false, 5)
+createSectionHeader("DIGGING TOOLS", 3)
+local digToggle = createToggle("Fast Dig", false, 4)
 
 -- SECTION 3: CRYSTAL MANAGEMENT
-createSectionHeader("CRYSTAL MANAGEMENT", 6)
-local hazardToggle = createToggle("Hazard Remover (Lava/Rocks/Avalanche)", true, 7)
-local cleanBtn = createActionButton("Clear All Map Crystals", Color3.fromRGB(200, 100, 0), 8, function()
+createSectionHeader("CRYSTAL MANAGEMENT", 5)
+local hazardToggle = createToggle("Hazard Remover (Lava/Rocks/Avalanche)", true, 6)
+local cleanBtn = createActionButton("Clear All Map Crystals", Color3.fromRGB(200, 100, 0), 7, function()
     local count = cleanMapCrystals()
     statusLabel.Text = ("Status: Wiped %d map crystals"):format(count)
     statusLabel.TextColor3 = COLORS.Success
 end)
-local crystalCapToggle = createToggle("Crystal Cap (200 Max)", false, 9)
+local crystalCapToggle = createToggle("Crystal Cap (200 Max)", false, 8)
 
--- SECTION 4: BOULDER CONTROL
-createSectionHeader("BOULDER CONTROL", 10)
+-- SECTION 4: BOULDER CONTROL (Boulder X-Ray moved here)
+createSectionHeader("BOULDER CONTROL", 9)
 
--- Position input row
+-- Boulder X-Ray toggle (moved from Visual Features)
+local boulderXrayToggle = createToggle("Boulder Names (5000 Studs)", false, 10)
+
+-- Position input row with Set and TP buttons
 local posCard = Instance.new("Frame")
 posCard.Size = UDim2.new(1, 0, 0, 50)
 posCard.BackgroundColor3 = COLORS.Card
@@ -582,10 +582,10 @@ posCard.Parent = scrollFrame
 Instance.new("UICorner", posCard).CornerRadius = UDim.new(0, 10)
 
 local posLabel = Instance.new("TextLabel")
-posLabel.Size = UDim2.new(0.35, 0, 1, 0)
+posLabel.Size = UDim2.new(0.3, 0, 1, 0)
 posLabel.Position = UDim2.new(0, 10, 0, 0)
 posLabel.BackgroundTransparency = 1
-posLabel.Text = "Target Position:"
+posLabel.Text = "Position:"
 posLabel.TextColor3 = COLORS.Text
 posLabel.TextSize = 13
 posLabel.Font = Enum.Font.Gotham
@@ -593,8 +593,8 @@ posLabel.TextXAlignment = Enum.TextXAlignment.Left
 posLabel.Parent = posCard
 
 local posInput = Instance.new("TextBox")
-posInput.Size = UDim2.new(0, 120, 0, 30)
-posInput.Position = UDim2.new(0.35, 5, 0.5, -15)
+posInput.Size = UDim2.new(0, 100, 0, 30)
+posInput.Position = UDim2.new(0.3, 5, 0.5, -15)
 posInput.BackgroundColor3 = COLORS.Background
 posInput.Text = "33, 43, 922"
 posInput.TextColor3 = COLORS.Text
@@ -606,8 +606,8 @@ posInput.Parent = posCard
 Instance.new("UICorner", posInput).CornerRadius = UDim.new(0, 6)
 
 local setPosBtn = Instance.new("TextButton")
-setPosBtn.Size = UDim2.new(0, 60, 0, 30)
-setPosBtn.Position = UDim2.new(1, -70, 0.5, -15)
+setPosBtn.Size = UDim2.new(0, 45, 0, 30)
+setPosBtn.Position = UDim2.new(0.65, 0, 0.5, -15)
 setPosBtn.BackgroundColor3 = COLORS.Accent
 setPosBtn.Text = "Set"
 setPosBtn.TextColor3 = COLORS.Text
@@ -618,16 +618,46 @@ setPosBtn.AutoButtonColor = false
 setPosBtn.Parent = posCard
 Instance.new("UICorner", setPosBtn).CornerRadius = UDim.new(0, 6)
 
+local tpPosBtn = Instance.new("TextButton")
+tpPosBtn.Size = UDim2.new(0, 45, 0, 30)
+tpPosBtn.Position = UDim2.new(1, -55, 0.5, -15)
+tpPosBtn.BackgroundColor3 = Color3.fromRGB(100, 180, 100)
+tpPosBtn.Text = "TP"
+tpPosBtn.TextColor3 = COLORS.Text
+tpPosBtn.TextSize = 13
+tpPosBtn.Font = Enum.Font.GothamBold
+tpPosBtn.BorderSizePixel = 0
+tpPosBtn.AutoButtonColor = false
+tpPosBtn.Parent = posCard
+Instance.new("UICorner", tpPosBtn).CornerRadius = UDim.new(0, 6)
+
+-- Set button with color feedback
 setPosBtn.MouseButton1Click:Connect(function()
     local text = posInput.Text
     local x, y, z = text:match("(-?%d+%.?%d*)%s*,%s*(-?%d+%.?%d*)%s*,%s*(-?%d+%.?%d*)")
     if x and y and z then
         boulderTargetPos = Vector3.new(tonumber(x), tonumber(y), tonumber(z))
-        statusLabel.Text = ("Status: Position set to %s"):format(text)
-        statusLabel.TextColor3 = COLORS.Success
-    else
-        statusLabel.Text = "Status: Invalid position format"
-        statusLabel.TextColor3 = COLORS.Warning
+        
+        -- Flash green to confirm
+        setPosBtn.BackgroundColor3 = COLORS.Success
+        task.delay(0.5, function()
+            setPosBtn.BackgroundColor3 = COLORS.Accent
+        end)
+    end
+end)
+
+-- Teleport button
+tpPosBtn.MouseButton1Click:Connect(function()
+    local char = player.Character
+    local rootPart = char and char:FindFirstChild("HumanoidRootPart")
+    if rootPart then
+        rootPart.CFrame = CFrame.new(boulderTargetPos)
+        
+        -- Flash to confirm
+        tpPosBtn.BackgroundColor3 = COLORS.Success
+        task.delay(0.5, function()
+            tpPosBtn.BackgroundColor3 = Color3.fromRGB(100, 180, 100)
+        end)
     end
 end)
 
@@ -658,13 +688,13 @@ Instance.new("UIPadding", boulderRow).PaddingBottom = UDim.new(0, 5)
 Instance.new("UIPadding", boulderRow).PaddingLeft = UDim.new(0, 5)
 Instance.new("UIPadding", boulderRow).PaddingRight = UDim.new(0, 5)
 
--- 5 Boulder TP Buttons with names and colors
+-- 5 Boulder TP Buttons
 local boulderData = {
-    { name = "M", fullName = "Mossite", color = Color3.fromRGB(80, 180, 80) },      -- Green
-    { name = "V", fullName = "Voidtite", color = Color3.fromRGB(120, 60, 180) },    -- Purple
-    { name = "G", fullName = "Gildrite", color = Color3.fromRGB(220, 180, 50) },    -- Gold
-    { name = "R", fullName = "Rimeveil", color = Color3.fromRGB(100, 200, 220) },   -- Cyan/Ice
-    { name = "N", fullName = "Nocturnite", color = Color3.fromRGB(60, 60, 120) }    -- Dark Blue
+    { name = "M", fullName = "Mossite", color = Color3.fromRGB(80, 180, 80) },
+    { name = "V", fullName = "Voidtite", color = Color3.fromRGB(120, 60, 180) },
+    { name = "G", fullName = "Gildrite", color = Color3.fromRGB(220, 180, 50) },
+    { name = "R", fullName = "Rimeveil", color = Color3.fromRGB(100, 200, 220) },
+    { name = "N", fullName = "Nocturnite", color = Color3.fromRGB(60, 60, 120) }
 }
 
 for i, data in ipairs(boulderData) do
@@ -741,7 +771,7 @@ createWeightInput("Legendary", "Legendary (T5)", 1000, 20)
 createWeightInput("Mythic", "Mythic (T6)", 0, 21)
 
 -- ============================================================
--- KILLSWITCH (COMPLETE SYSTEM RESET)
+-- KILLSWITCH
 -- ============================================================
 local closeButton = createActionButton("KILLSWITCH (Complete Reset)", Color3.fromRGB(180, 60, 60), 22, function()
     scriptActive = false
@@ -778,7 +808,7 @@ local closeButton = createActionButton("KILLSWITCH (Complete Reset)", Color3.fro
 end)
 
 -- ============================================================
--- VISUAL ENGINES (Name-Only X-Ray for Boulders)
+-- VISUAL ENGINES
 -- ============================================================
 local function updateVisuals()
     if not scriptActive then return end
@@ -829,23 +859,40 @@ local function updateVisuals()
     end
 end
 
-local function getBoulderFolder()
-    for _, path in ipairs({{"MountainDecorations", "Boulders"}, {"Map", "MountainDecorations", "Boulders"}, {"TerrainObjects", "Boulders"}, {"Boulders"}}) do
-        local current = Workspace
-        local found = true
-        for _, name in ipairs(path) do
-            current = current:FindFirstChild(name)
-            if not current then found = false; break end
+-- SCANS ENTIRE MAP for boulders (not just MountainDecorations)
+local function getAllBoulders()
+    local boulders = {}
+    
+    -- Scan entire workspace for anything with "Boulder" in name
+    for _, desc in ipairs(Workspace:GetDescendants()) do
+        if desc:IsA("Model") or desc:IsA("BasePart") then
+            local name = desc.Name:lower()
+            if name:find("boulder") then
+                table.insert(boulders, desc)
+            end
         end
-        if found then return current end
     end
-    return nil
+    
+    return boulders
 end
 
 local function getBoulderColor(part)
     local combined = (part.Name .. " " .. tostring(part:GetAttribute("Rarity") or part:GetAttribute("Tier") or "")):lower()
-    if combined:find("mythic") or combined:find("void") or combined:find("celestial") or combined:find("legendary") then return Color3.fromRGB(255, 215, 0) end
-    if combined:find("diamond") or combined:find("gold") or combined:find("epic") then return Color3.fromRGB(0, 255, 255) end
+    
+    -- Mossite = Green (matching button color)
+    if combined:find("mossite") then return Color3.fromRGB(80, 180, 80) end
+    -- Voidtite = Purple
+    if combined:find("voidtite") or combined:find("void") then return Color3.fromRGB(120, 60, 180) end
+    -- Gildrite = Gold
+    if combined:find("gildrite") or combined:find("gold") then return Color3.fromRGB(220, 180, 50) end
+    -- Rimeveil = Cyan
+    if combined:find("rimeveil") or combined:find("ice") or combined:find("frost") then return Color3.fromRGB(100, 200, 220) end
+    -- Nocturnite = Dark Blue
+    if combined:find("nocturnite") or combined:find("night") or combined:find("dark") then return Color3.fromRGB(60, 60, 120) end
+    
+    -- Fallback colors
+    if combined:find("mythic") or combined:find("celestial") or combined:find("legendary") then return Color3.fromRGB(255, 215, 0) end
+    if combined:find("diamond") or combined:find("epic") then return Color3.fromRGB(0, 255, 255) end
     if combined:find("rare") or combined:find("silver") or combined:find("iron") then return Color3.fromRGB(180, 80, 255) end
     return Color3.fromRGB(110, 30, 160) 
 end
@@ -884,31 +931,32 @@ end
 local function updateBoulderXray(state)
     if not scriptActive then return end
     
-    local bouldersRoot = getBoulderFolder()
-    if not bouldersRoot then 
-        statusLabel.Text = "Status: Boulders folder not found"
-        statusLabel.TextColor3 = COLORS.Warning
-        return 
-    end
-    
     for _, label in pairs(boulderLabels) do pcall(function() label:Destroy() end) end
     boulderLabels = {}
 
     if state then
+        local boulders = getAllBoulders()
         local count = 0
-        for _, boulder in ipairs(bouldersRoot:GetChildren()) do
+        
+        for _, boulder in ipairs(boulders) do
             applyBoulderName(boulder)
             count += 1
         end
+        
         statusLabel.Text = ("Status: Boulder Names enabled (%d found)"):format(count)
         statusLabel.TextColor3 = COLORS.Success
         
-        if not bouldersRoot:GetAttribute("XrayHooked") then
-            bouldersRoot:SetAttribute("XrayHooked", true)
-            local conn = bouldersRoot.ChildAdded:Connect(function(child)
+        -- Hook for new boulders spawning anywhere
+        if not Workspace:GetAttribute("BoulderXrayHooked") then
+            Workspace:SetAttribute("BoulderXrayHooked", true)
+            local conn = Workspace.DescendantAdded:Connect(function(child)
                 if not scriptActive then return end
-                if toggles["Boulder Names (5000 Studs)"].state then
-                    applyBoulderName(child)
+                if toggles["Boulder Names (5000 Studs)"] and toggles["Boulder Names (5000 Studs)"].state then
+                    if child:IsA("Model") or child:IsA("BasePart") then
+                        if child.Name:lower():find("boulder") then
+                            applyBoulderName(child)
+                        end
+                    end
                 end
             end)
             table.insert(allConnections, conn)
@@ -979,7 +1027,7 @@ end
 
 initAutoRuneXray()
 
--- RAPID FIRE AUTO DIG (Uses dynamic tool name)
+-- RAPID FIRE AUTO DIG
 local function getDigPosition()
     local cam = Workspace.CurrentCamera
     local hrp = humanoidRootPart
@@ -988,8 +1036,6 @@ local function getDigPosition()
     local params = RaycastParams.new()
     params.FilterType = Enum.RaycastFilterType.Include
     local filter = {Workspace.Terrain}
-    local boulders = getBoulderFolder()
-    if boulders then table.insert(filter, boulders) end
     params.FilterDescendantsInstances = filter
     
     local reach = 54
@@ -1119,7 +1165,7 @@ end}
 xrayToggle.callbacks = {function() end}
 boulderXrayToggle.callbacks = {updateBoulderXray}
 
--- HOTKEYS (Middle Mouse only - no Automation section)
+-- HOTKEYS
 UserInputService.InputBegan:Connect(function(input, gpe)
 	if gpe then return end
 	if input.KeyCode == Enum.KeyCode.Delete then 
@@ -1128,11 +1174,9 @@ UserInputService.InputBegan:Connect(function(input, gpe)
         mainFrame.Visible = not mainFrame.Visible 
     elseif input.UserInputType == Enum.UserInputType.MouseButton3 then
         if not scriptActive then return end
-        -- Toggle Auto Dig directly (no toggle button in GUI)
         local currentAutoDigState = toggles["Auto Dig (Middle Mouse)"] and toggles["Auto Dig (Middle Mouse)"].state or false
         local newState = not currentAutoDigState
         
-        -- Create toggle entry if it doesn't exist
         if not toggles["Auto Dig (Middle Mouse)"] then
             toggles["Auto Dig (Middle Mouse)"] = { state = newState, callbacks = {} }
         else
@@ -1140,8 +1184,6 @@ UserInputService.InputBegan:Connect(function(input, gpe)
         end
         
         updateAutoDigIndicator(newState)
-        statusLabel.Text = "Status: Auto Dig " .. (newState and "enabled" or "disabled")
-        statusLabel.TextColor3 = newState and COLORS.Success or COLORS.TextDim
 	end
 end)
 
@@ -1173,4 +1215,4 @@ RunService.Heartbeat:Connect(function(dt)
     end
 end)
 
-print("Unified Game Control Panel v9.1 loaded!")
+print("Unified Game Control Panel v9.2 loaded!")
